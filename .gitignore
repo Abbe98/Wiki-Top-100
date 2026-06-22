@@ -8,3 +8,7 @@ wikitop100_viz.png
 final_screenshot.png
 .cache/
 .env
+.devenv/
+.devenv.flake.nix
+.direnv/
+devenv.local.nix

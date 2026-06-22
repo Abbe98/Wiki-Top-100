@@ -31,6 +31,22 @@ top.hatnote.com API  ──►  build_graph.py  ──►  NDJSON stream  ──
 
 ## Usage
 
+### Option A — Nix / devenv
+
+If you have [devenv](https://devenv.sh) installed (or use direnv), the
+repo includes `devenv.nix` / `devenv.yaml` / `.envrc` that pin Python
+3.12, install requirements into a venv, and download the spaCy model on
+first shell entry:
+
+```bash
+devenv shell        # or: direnv allow (automatic on cd)
+wiki-test           # run the test suite
+wiki-serve          # start the dev server
+wiki-build 2026 5 17  # build a graph for a specific date
+```
+
+### Option B — manual venv
+
 ```bash
 # Setup
 python3 -m venv .venv
