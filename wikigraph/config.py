@@ -35,10 +35,34 @@ def _is_valid_ua(ua):
 _load_dotenv()
 
 
-HATNOTE_URL = os.environ.get("WIKI_HATNOTE_URL",
-    "https://top.hatnote.com/en/wikipedia/{year}/{month}/{day}.json")
-MW_API = os.environ.get("WIKI_MW_API",
-    "https://en.wikipedia.org/w/api.php")
+SUPPORTED_PROJECTS = ("wikivoyage", "wikipedia")
+
+WIKI_LANG = os.environ.get("WIKI_LANG", "en")
+WIKI_PROJECT = os.environ.get("WIKI_PROJECT", "wikivoyage")
+
+
+def wiki_endpoints(lang=None, project=None):
+    """Return (hatnote_url, mw_api, base_url) for a given lang/project.
+
+    Falls back to the WIKI_LANG / WIKI_PROJECT defaults when args are None.
+    Honors the WIKI_HATNOTE_URL / WIKI_MW_API overrides only when both
+    lang and project match the configured defaults; per-request picks
+    always derive URLs from lang/project.
+    """
+    lang = lang or WIKI_LANG
+    project = project or WIKI_PROJECT
+    using_defaults = (lang == WIKI_LANG and project == WIKI_PROJECT)
+    hatnote = f"https://top.hatnote.com/{lang}/{project}/{{year}}/{{month}}/{{day}}.json"
+    mw = f"https://{lang}.{project}.org/w/api.php"
+    base = f"https://{lang}.{project}.org/wiki/"
+    if using_defaults:
+        hatnote = os.environ.get("WIKI_HATNOTE_URL", hatnote)
+        mw = os.environ.get("WIKI_MW_API", mw)
+    return hatnote, mw, base
+
+
+HATNOTE_URL, MW_API, WIKI_BASE_URL = wiki_endpoints()
+
 _DEFAULT_UA = "WikiTop100Viz/1.0 (contact: andrew.lih@gmail.com)"
 HEADERS = {"User-Agent": os.environ.get("WIKI_USER_AGENT", _DEFAULT_UA)}
 MAX_CONCURRENT = int(os.environ.get("WIKI_MAX_CONCURRENT", "3"))

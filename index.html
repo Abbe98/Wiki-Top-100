@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wikipedia Top 100 Connections</title>
+<title>Wikivoyage Top 100 Connections</title>
 <script src="https://tools-static.wmflabs.org/cdnjs/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -37,6 +37,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   border-radius: 4px; font-size: 12px; outline: none; cursor: pointer;
 }
 #controls input[type=date]:focus { border-color: #6c5ce7; }
+#controls select.wiki-picker {
+  background: #2a2a4a; border: 1px solid #444; color: #e0e0e0; padding: 2px 6px;
+  border-radius: 4px; font-size: 12px; outline: none; cursor: pointer;
+}
+#controls select.wiki-picker:focus { border-color: #6c5ce7; }
 .date-nav {
   background: #2a2a4a; border: 1px solid #444; color: #999; padding: 2px 6px;
   border-radius: 4px; font-size: 12px; cursor: pointer; line-height: 1;
@@ -244,6 +249,11 @@ svg { width: 100%; height: 100%; }
   <div class="controls-row">
     <h1>WikiTop100 <span>Connections</span></h1>
     <div class="sep"></div>
+    <label>🌐 <select class="wiki-picker" id="wiki-picker" title="Target wiki">
+      <option value="wikivoyage">en.wikivoyage</option>
+      <option value="wikipedia">en.wikipedia</option>
+    </select></label>
+    <div class="sep"></div>
     <label>📅 <button class="date-nav" onclick="goToDate(-1)" title="Previous day">◀</button> <input type="date" id="date-picker"> <button class="date-nav" onclick="goToDate(1)" title="Next day">▶</button></label>
     <span class="loading" id="loading-indicator"></span>
     <div class="sep"></div>
@@ -321,7 +331,7 @@ svg { width: 100%; height: 100%; }
   <div id="about-box">
     <span class="close" onclick="toggleAbout()">✕</span>
     <h2>WikiTop100 Connections</h2>
-    <div class="subtitle">Interactive visualization of the top 100 most-viewed English Wikipedia articles</div>
+    <div class="subtitle">Interactive visualization of the top 100 most-viewed articles on a Wikimedia wiki (Wikivoyage by default; pick another with the 🌐 selector)</div>
 
     <h3>How it works</h3>
     <p>Each day's top 100 is fetched from <strong>top.hatnote.com</strong>. Every article is then enriched with its categories, outgoing wikilinks, and intro text from the <strong>MediaWiki API</strong>. A spaCy NLP model extracts named entities (people, organizations, places) from the summaries.</p>
@@ -335,7 +345,7 @@ svg { width: 100%; height: 100%; }
     <div class="swatch-row" id="about-colors"></div>
 
     <h3>Data pipeline</h3>
-    <p>The graph is built on-the-fly by <code>server.py</code> when you select a date or load the page. Progress is streamed to the UI in real time. API responses are cached locally (24h for the top-100 list, 7 days for article metadata) to reduce load on Wikipedia's servers.</p>
+    <p>The graph is built on-the-fly by <code>server.py</code> when you select a date or load the page. Progress is streamed to the UI in real time. API responses are cached locally (24h for the top-100 list, 7 days for article metadata) to reduce load on Wikimedia's servers.</p>
 
     <h3>Controls</h3>
     <ul>
@@ -351,7 +361,7 @@ svg { width: 100%; height: 100%; }
     </ul>
 
     <h3>Credits</h3>
-    <p>Built with Python (httpx, NetworkX, spaCy), D3.js v7, and the Wikipedia <a href="https://top.hatnote.com" target="_blank" style="color:#6c5ce7">Hatnote API</a>. Data sourced from the <a href="https://en.wikipedia.org/w/api.php" target="_blank" style="color:#6c5ce7">MediaWiki API</a>. Top-100 data provided by the <a href="https://github.com/hatnote/top" target="_blank" style="color:#6c5ce7">hatnote/top</a> project.</p>
+    <p>Built with Python (httpx, NetworkX, spaCy), D3.js v7, and the <a href="https://top.hatnote.com" target="_blank" style="color:#6c5ce7">Hatnote Top API</a>. Data sourced from the MediaWiki API of the selected wiki. Top-100 data provided by the <a href="https://github.com/hatnote/top" target="_blank" style="color:#6c5ce7">hatnote/top</a> project.</p>
     <p style="margin-top:8px;font-size:11px;color:#666">User-Agent: <span id="about-ua"></span></p>
   </div>
 </div>
@@ -384,6 +394,19 @@ let container;
 let ignoreList = [];
 let activeFilters = new Set();
 let spacingValue = 27;
+
+const SUPPORTED_WIKIS = ["wikivoyage", "wikipedia"];
+function loadWiki() {
+  const stored = localStorage.getItem("wiki_project");
+  return SUPPORTED_WIKIS.includes(stored) ? stored : "wikivoyage";
+}
+function saveWiki(v) {
+  localStorage.setItem("wiki_project", v);
+}
+function currentBaseUrl() {
+  if (graphData && graphData.meta && graphData.meta.base_url) return graphData.meta.base_url;
+  return "https://en." + loadWiki() + ".org/wiki/";
+}
 
 function showProgress(msg) {
   document.getElementById("progress-overlay").classList.add("visible");
@@ -471,6 +494,14 @@ function setupOnce() {
   });
 
   document.getElementById("date-picker").addEventListener("change", onDateChange);
+
+  const wikiPicker = document.getElementById("wiki-picker");
+  wikiPicker.value = loadWiki();
+  wikiPicker.addEventListener("change", function() {
+    saveWiki(this.value);
+    syncUrl();
+    onDateChange();
+  });
 }
 
 function updateSpacing(val) {
@@ -526,12 +557,14 @@ function syncUrl() {
   const params = new URLSearchParams();
   const originalParams = new URLSearchParams(window.location.search);
   for (const [k, v] of originalParams) {
-    if (!["date","ignore","spacing","helpers","labels","legend","image","speed","zoom","fontsize","order"].includes(k)) {
+    if (!["date","ignore","spacing","helpers","labels","legend","image","speed","zoom","fontsize","order","wiki"].includes(k)) {
       params.set(k, v);
     }
   }
   const parts = picker.value.split("-");
   if (parts.length === 3) params.set("date", picker.value);
+  const wiki = loadWiki();
+  if (wiki !== "wikivoyage") params.set("wiki", wiki);
   if (ignoreList.length > 0 && JSON.stringify(ignoreList) !== JSON.stringify(DEFAULT_IGNORE)) {
     params.set("ignore", ignoreList.join(","));
   }
@@ -555,6 +588,11 @@ function syncUrl() {
 }
 
 function applyPreGraphParams(params) {
+  if (params.has("wiki") && SUPPORTED_WIKIS.includes(params.get("wiki"))) {
+    saveWiki(params.get("wiki"));
+    const wp = document.getElementById("wiki-picker");
+    if (wp) wp.value = params.get("wiki");
+  }
   if (params.has("image")) {
     localStorage.setItem("wiki_image_source", params.get("image"));
     document.getElementById("img-src-btn").textContent = params.get("image") === "page" ? "📷 Article" : "📷 Hatnote";
@@ -688,6 +726,7 @@ async function fetchGraph(year, month, day) {
   if (ignoreList.length > 0) {
     params.set("ignore", ignoreList.join(","));
   }
+  params.set("wiki", loadWiki());
   showProgress("Fetching top 100...");
   const resp = await fetch(`/api/graph?${params.toString()}`);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -999,9 +1038,10 @@ function clickNode(event, d) {
   if (d.type === "helper") {
     const helperLabel = d.label || d.id.replace(/^(cat:|ent:)/, "");
     const helperType = d.helper_type === "category" ? "Category" : "Named Entity";
+    const base = currentBaseUrl();
     const wikiUrl = d.helper_type === "category"
-      ? `https://en.wikipedia.org/wiki/Category:${encodeURIComponent(helperLabel.replace(/ /g, "_"))}`
-      : `https://en.wikipedia.org/wiki/${encodeURIComponent(helperLabel.replace(/ /g, "_"))}`;
+      ? `${base}Category:${encodeURIComponent(helperLabel.replace(/ /g, "_"))}`
+      : `${base}${encodeURIComponent(helperLabel.replace(/ /g, "_"))}`;
     html += `<h2>${escHtml(helperLabel)}</h2>`;
     html += `<div class="meta">${helperType} helper</div>`;
     html += `<div class="connections"><h3>Connected articles (${connectedArticles.length})</h3><ul>`;
@@ -1015,7 +1055,7 @@ function clickNode(event, d) {
       html += `<li>${edgeSym} <a onclick="showArticle('${c.id}')">${escHtml(label)}</a></li>`;
     });
     html += `</ul></div>`;
-    html += `<a class="ext-link" href="${wikiUrl}" target="_blank">Open on Wikipedia \u2192</a>`;
+    html += `<a class="ext-link" href="${wikiUrl}" target="_blank">Open on wiki \u2192</a>`;
   } else {
     const color = d.color || "#6c5ce7";
     html += `<h2>${escHtml(d.title)}</h2>`;
@@ -1041,7 +1081,7 @@ function clickNode(event, d) {
       });
       html += `</ul></div>`;
     }
-    html += `<a class="ext-link" href="${d.url}" target="_blank">Open on Wikipedia \u2192</a>`;
+    html += `<a class="ext-link" href="${d.url}" target="_blank">Open on wiki \u2192</a>`;
   }
 
   content.innerHTML = html;
@@ -1296,6 +1336,7 @@ async function hardRefresh() {
   const ua = loadUA();
   if (ua) params.set("user_agent", ua);
   if (ignoreList.length > 0) params.set("ignore", ignoreList.join(","));
+  params.set("wiki", loadWiki());
   params.set("refresh", "1");
   showProgress("Clearing cache and rebuilding...");
   try {

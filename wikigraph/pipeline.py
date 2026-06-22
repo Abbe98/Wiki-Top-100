@@ -9,7 +9,8 @@ import asyncio
 
 import networkx as nx
 
-from .config import _is_valid_ua, HEADERS, MAX_CONCURRENT
+from .config import (_is_valid_ua, HEADERS, MAX_CONCURRENT,
+                     WIKI_LANG, WIKI_PROJECT, wiki_endpoints)
 from .sources.hatnote import fetch_top100
 from .enricher.mw_api import fetch_all_metadata
 from .analyzer.categories import is_meaningful_category
@@ -24,7 +25,8 @@ from .graph.serializers import serialize_graph
 
 
 def build_graph(year, month, day, min_entity_share=3, verbose=True,
-                ignore_articles=None, progress_callback=None, user_agent=None):
+                ignore_articles=None, progress_callback=None, user_agent=None,
+                lang=None, project=None):
     """Run the full pipeline: fetch → enrich → analyze → build → export.
 
     Returns the graph data dict with meta, nodes, and links keys.
@@ -47,8 +49,12 @@ def build_graph(year, month, day, min_entity_share=3, verbose=True,
 
     headers = {"User-Agent": ua}
 
-    log(f"Fetching top 100 for {year}/{month}/{day}...")
-    articles = fetch_top100(year, month, day)
+    lang = lang or WIKI_LANG
+    project = project or WIKI_PROJECT
+    hatnote_url, mw_api, base_url = wiki_endpoints(lang, project)
+
+    log(f"Fetching top 100 for {lang}.{project} on {year}/{month}/{day}...")
+    articles = fetch_top100(year, month, day, hatnote_url=hatnote_url, base_url=base_url)
     if ignore_articles:
         ignore_set = {a.lower().replace(" ", "_") for a in ignore_articles}
         ignore_titles = {a.lower() for a in ignore_articles}
@@ -65,7 +71,7 @@ def build_graph(year, month, day, min_entity_share=3, verbose=True,
     log("Fetching article metadata (async, 5 concurrent)...")
     metadata = asyncio.run(fetch_all_metadata(
         titles, max_concurrent=MAX_CONCURRENT,
-        progress_callback=progress_callback, headers=headers))
+        progress_callback=progress_callback, headers=headers, mw_api=mw_api))
     log(f"Got metadata for {len(metadata)} articles")
 
     failed_articles = []
@@ -115,6 +121,9 @@ def build_graph(year, month, day, min_entity_share=3, verbose=True,
             "ua_compliant": ua_ok,
             "failed_articles": failed_articles,
             "failed_count": len(failed_articles),
+            "lang": lang,
+            "project": project,
+            "base_url": base_url,
         },
         "nodes": nodes_data,
         "links": links_data,
@@ -134,16 +143,16 @@ def build_graph(year, month, day, min_entity_share=3, verbose=True,
     return output
 
 
-def latest_available_date():
+def latest_available_date(lang=None, project=None):
     """Walk backwards from today to find a date with Hatnote data."""
     from datetime import date, timedelta
 
-    from .config import HATNOTE_URL
     from .sources.hatnote import fetch_json
 
+    hatnote_url, _, _ = wiki_endpoints(lang, project)
     d = date.today()
     for _ in range(7):
-        url = HATNOTE_URL.format(year=d.year, month=d.month, day=d.day)
+        url = hatnote_url.format(year=d.year, month=d.month, day=d.day)
         try:
             fetch_json(url)
             return str(d.year), str(d.month), str(d.day)
