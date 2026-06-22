@@ -1,6 +1,8 @@
 # WikiTop100 Connections
 
-An interactive visualization of the top 100 most popular English Wikipedia articles for a given day, showing how they connect through wikilinks, shared categories, and named entities.
+An interactive visualization of the top 100 most popular articles on a Wikimedia wiki for a given day, showing how they connect through wikilinks, shared categories, and named entities.
+
+The default target is **English Wikivoyage**. A 🌐 picker in the UI (and the `WIKI_PROJECT` env var / `?wiki=` URL parameter) lets you switch between Wikivoyage and Wikipedia.
 
 The app has two modes:
 
@@ -18,7 +20,7 @@ top.hatnote.com API  ──►  build_graph.py  ──►  NDJSON stream  ──
   (top 100 list)           (Python pipeline)      (progress + data)     (D3.js viz)
 ```
 
-1. **Fetch** the top 100 from `https://top.hatnote.com/en/wikipedia/{year}/{month}/{day}.json`
+1. **Fetch** the top 100 from `https://top.hatnote.com/{lang}/{project}/{year}/{month}/{day}.json` (defaults to `en/wikivoyage`)
 2. **Enrich** each article by fetching its categories, internal links, and intro text from the MediaWiki API (async, 3 concurrent calls, with exponential backoff on retry)
 3. **Analyze** with spaCy NER to extract people, organizations, places, and events from summaries
 4. **Build** a graph with three connection types:
@@ -28,6 +30,22 @@ top.hatnote.com API  ──►  build_graph.py  ──►  NDJSON stream  ──
 5. **Visualize** with a D3.js force-directed graph; pipeline progress streamed to the UI via NDJSON
 
 ## Usage
+
+### Option A — Nix / devenv
+
+If you have [devenv](https://devenv.sh) installed (or use direnv), the
+repo includes `devenv.nix` / `devenv.yaml` / `.envrc` that pin Python
+3.12, install requirements into a venv, and download the spaCy model on
+first shell entry:
+
+```bash
+devenv shell        # or: direnv allow (automatic on cd)
+wiki-test           # run the test suite
+wiki-serve          # start the dev server
+wiki-build 2026 5 17  # build a graph for a specific date
+```
+
+### Option B — manual venv
 
 ```bash
 # Setup
@@ -68,8 +86,10 @@ All settings are optional. Set them via environment variables, a `.env` file (se
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WIKI_USER_AGENT` | `WikiTop100Viz/1.0 (contact: ...)` | User-Agent for MW API (must include email/URL, or you'll be rate-limited) |
-| `WIKI_HATNOTE_URL` | `https://top.hatnote.com/...` | Hatnote API endpoint template |
-| `WIKI_MW_API` | `https://en.wikipedia.org/w/api.php` | MediaWiki API endpoint |
+| `WIKI_PROJECT` | `wikivoyage` | Target Wikimedia project (e.g. `wikivoyage`, `wikipedia`) |
+| `WIKI_LANG` | `en` | Language subdomain |
+| `WIKI_HATNOTE_URL` | derived from project/lang | Override the Hatnote API endpoint template |
+| `WIKI_MW_API` | derived from project/lang | Override the MediaWiki API endpoint |
 | `WIKI_MAX_CONCURRENT` | `3` | Concurrent async HTTP requests |
 | `WIKI_CACHE_DIR` | `.cache` | Directory for cached API responses |
 | `WIKI_HATNOTE_CACHE_TTL` | `86400` | Hatnote cache TTL in seconds (24h) |
@@ -113,6 +133,7 @@ All UI state can be set via URL query parameters for bookmarking and sharing:
 
 | Parameter | Values | Default | Description |
 |-----------|--------|---------|-------------|
+| `wiki` | `wikivoyage` or `wikipedia` | `wikivoyage` | Target Wikimedia project |
 | `date` | `YYYY-MM-DD` | today | Load a specific date |
 | `ignore` | comma-separated article titles | `.xxx`,`.xyz`,XXX articles | Articles to exclude |
 | `spacing` | `0`–`100` | `27` | Force simulation repulsion |

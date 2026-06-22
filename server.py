@@ -34,6 +34,8 @@ class GraphAPIHandler(SimpleHTTPRequestHandler):
                 ignore_list = ignore_raw.split(",") if ignore_raw else None
                 user_agent = params.get("user_agent", [None])[0]
                 refresh = params.get("refresh", ["0"])[0] == "1"
+                lang = params.get("lang", [None])[0]
+                project = params.get("wiki", [None])[0]
             except (ValueError, KeyError):
                 self.send_error(400, "Invalid parameters")
                 return
@@ -59,7 +61,8 @@ class GraphAPIHandler(SimpleHTTPRequestHandler):
                 graph_data = build_graph(year, month, day, min_entity_share=min_entity,
                                          ignore_articles=ignore_list,
                                          progress_callback=lambda m: write_json({"type": "progress", "message": m}),
-                                         user_agent=user_agent)
+                                         user_agent=user_agent,
+                                         lang=lang, project=project)
                 write_json({"type": "graph", "data": graph_data})
             except Exception as e:
                 write_json({"type": "error", "message": str(e)})
